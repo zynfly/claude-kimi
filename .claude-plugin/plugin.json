@@ -1,0 +1,12 @@
+{
+  "name": "claude-kimi",
+  "version": "0.2.0",
+  "description": "Delegate tasks from Claude Code to the local kimicode CLI agent via its wire protocol (JSON-RPC 2.0 over stdio). Adds an MCP server, a /kimi slash command, a kimi-delegate subagent, and a delegating-to-kimi skill.",
+  "author": {
+    "name": "zynfly",
+    "email": "g.zynfly@gmail.com"
+  },
+  "license": "MIT",
+  "homepage": "https://www.kimi.com/code/docs/kimi-code-cli/customization/wire-protocol.html",
+  "keywords": ["kimi", "kimicode", "mcp", "wire-protocol", "delegation"]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "kimicode-self",
+  "owner": {
+    "name": "zynfly"
+  },
+  "plugins": [
+    {
+      "name": "claude-kimi",
+      "source": ".",
+      "description": "Delegate Claude Code tasks to the local kimi CLI via its wire protocol."
+    }
+  ]
+}

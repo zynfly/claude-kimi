@@ -1,0 +1,21 @@
+{
+  "name": "kimicode-mcp",
+  "version": "0.2.0",
+  "description": "MCP bridge that lets Claude Code delegate tasks to the local kimicode CLI via its wire protocol.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "kimicode-mcp": "./src/server.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "smoke": "node scripts/smoke.js",
+    "test": "node --test --test-reporter=spec 'test/**/*.test.js'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
