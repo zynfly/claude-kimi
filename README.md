@@ -62,9 +62,9 @@ Within one Claude Code session, all `ask_kimi` calls for the same `work_dir` sha
 | `KIMI_BIN` | `kimi` | Path to the `kimi` executable (falls back to `$PATH`) |
 | `KIMI_MAX_FILE_BYTES` | `200000` | Per-file size limit for inline embedding (bytes) |
 | `KIMI_MAX_TOTAL_BYTES` | `1000000` | Total inline embedding budget (bytes) |
-| `KIMI_RPC_TIMEOUT_MS` | `600000` | Default RPC call timeout (ms) |
-| `KIMI_RPC_FAST_TIMEOUT_MS` | `30000` | Fast-path RPC timeout (ms) |
-| `KIMI_RPC_INIT_TIMEOUT_MS` | `60000` | Process initialization timeout (ms) |
+| `KIMI_RPC_TIMEOUT_MS` | `600000` | **Idle** timeout for `prompt` calls (ms). Resets on every line kimi sends, so a long-running task that keeps streaming events stays alive — only fires after this long with zero activity. |
+| `KIMI_RPC_FAST_TIMEOUT_MS` | `30000` | Idle timeout for non-`prompt` RPC calls (ms) |
+| `KIMI_RPC_INIT_TIMEOUT_MS` | `60000` | Idle timeout for the initial `initialize` handshake (ms) |
 | `KIMI_MAX_RESPONSE_BYTES` | `16384` | Hard ceiling for finished-turn response text (bytes) |
 | `KIMI_LOG_THINK` | — | Set to `1` to enable think-content logging |
 

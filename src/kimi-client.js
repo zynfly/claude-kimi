@@ -5,6 +5,9 @@ import readline from 'node:readline';
 const PROTOCOL_VERSION = process.env.KIMI_PROTOCOL_VERSION || '1.9';
 const KIMI_BIN = process.env.KIMI_BIN || 'kimi';
 const LOG_THINK = process.env.KIMI_LOG_THINK === '1';
+// Idle timeouts: reset on every incoming line from kimi (see _onLine).
+// A long-running `prompt` will only fire RPC_TIMEOUT_MS if kimi goes truly silent
+// — not because the wall-clock total exceeds the cap.
 const RPC_TIMEOUT_MS = Math.max(1000, parseInt(process.env.KIMI_RPC_TIMEOUT_MS || '600000', 10));
 const RPC_FAST_TIMEOUT_MS = Math.max(1000, parseInt(process.env.KIMI_RPC_FAST_TIMEOUT_MS || '30000', 10));
 const RPC_INIT_TIMEOUT_MS = Math.max(5000, parseInt(process.env.KIMI_RPC_INIT_TIMEOUT_MS || '60000', 10));
@@ -86,6 +89,11 @@ export class KimiClient {
     let msg;
     try { msg = JSON.parse(t); } catch { return; }
 
+    // Any line from kimi means it's alive — refresh idle timers for all in-flight calls.
+    // Without this, a long-running `prompt` that's actively streaming events would
+    // still hit the wall-clock timeout and get killed mid-task.
+    for (const p of this.pending.values()) p.refresh?.();
+
     const isResponse = msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined);
     const isRequest = msg.id !== undefined && msg.method && !isResponse;
     const isNotification = msg.id === undefined && msg.method;
@@ -125,17 +133,21 @@ export class KimiClient {
     const id = randomUUID();
     const cap = timeoutMs ?? (method === 'prompt' ? RPC_TIMEOUT_MS : RPC_FAST_TIMEOUT_MS);
     return new Promise((resolve, reject) => {
+      // Idle timer: fires only when kimi has been silent for `cap` ms.
+      // _onLine() refreshes this timer on every incoming line, so a long-running
+      // `prompt` that's actively streaming will not be killed mid-task.
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        log(`rpc timeout (${method}, ${cap}ms) — killing bucket`);
+        log(`rpc idle timeout (${method}, no activity for ${cap}ms) — killing bucket`);
         this.shutdown();
-        reject(new Error(`kimi RPC timeout: ${method} did not respond within ${cap}ms`));
+        reject(new Error(`kimi RPC idle timeout: ${method} sent no events for ${cap}ms`));
       }, cap);
       timer.unref?.();
 
       this.pending.set(id, {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject: (e) => { clearTimeout(timer); reject(e); },
+        refresh: () => { try { timer.refresh?.(); } catch {} },
       });
       try {
         this._send({ jsonrpc: '2.0', id, method, params });
