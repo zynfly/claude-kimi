@@ -1,7 +1,7 @@
 ---
 description: Delegate a self-contained task to the local kimicode CLI agent.
 argument-hint: <task description for kimi>
-allowed-tools: ["Bash(pwd)", "mcp__kimicode__ask_kimi"]
+allowed-tools: ["Bash(pwd)", "mcp__kimicode__ask_kimi", "mcp__plugin_claude-kimi_kimicode__ask_kimi"]
 ---
 
 Current working directory: !`pwd`
@@ -24,4 +24,5 @@ $ARGUMENTS
 
 After kimi returns:
 - If the response begins with `[kimi status=max_steps_reached ...]` or `[kimi status=cancelled ...]`, surface the status and suggest narrowing the prompt; do not auto-retry.
-- Otherwise, summarize what kimi did in 2–5 bullets and quote diffs/lists kimi returned. Do not paste long output verbatim.
+- If kimi's reply is short (≲ 200 words) and contains no diffs, file lists, or structured output, **relay it verbatim** — do not "summarize" a one-paragraph answer into bullets, that throws away the actual content. A leading `[kimi ctx=...]` status line may be omitted or kept, your choice.
+- Otherwise (long output, or contains diffs / file lists / structured blocks), summarize what kimi did in 2–5 bullets and quote the diffs/lists verbatim inside fenced blocks. Do not paste long prose verbatim.
