@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Claude Code plugin that delegates tasks to the local **kimi** CLI agent via its wire protocol (JSON-RPC 2.0 over stdio). It exposes an MCP server, a slash command, a subagent, and a skill so you can hand off work from Claude Code to kimicode.
+A Claude Code plugin that delegates tasks to the local **kimi** CLI agent via its wire protocol (JSON-RPC 2.0 over stdio). It exposes an MCP server, a slash command, and a skill so you can hand off work from Claude Code to kimicode.
 
 ## Prerequisites
 
@@ -53,10 +53,6 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 ### Slash command
 
 - `/kimi <task>` — Delegates the given task description to kimicode immediately.
-
-### Subagent
-
-- `kimi-delegate` — A dedicated subagent for heavy, well-scoped tasks that do not require back-and-forth clarification with the user.
 
 ### Skill
 
