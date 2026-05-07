@@ -12,9 +12,41 @@ A Claude Code plugin that delegates tasks to the local **kimi** CLI agent via it
 
 ## Install
 
-1. Clone or copy this repository into your Claude Code plugins directory.
-2. Ensure `.mcp.json` points to the plugin entry, or install it as a standard Claude Code plugin.
-3. Restart Claude Code. The `SessionStart` hook will run `npm install` if `node_modules` is missing.
+Inside Claude Code, run:
+
+```text
+/plugin marketplace add zynfly/claude-kimi
+/plugin install claude-kimi@claude-kimi
+/reload-plugins
+```
+
+The first command registers this GitHub repo as a marketplace, the second enables the plugin, and `/reload-plugins` activates it without restarting the session. On first activation the `SessionStart` hook runs `npm install` automatically if `node_modules` is missing — you don't need to clone or `cd` anywhere.
+
+To upgrade later (e.g. after a new release on `main`):
+
+```text
+/plugin marketplace update claude-kimi
+/plugin update claude-kimi@claude-kimi
+/reload-plugins
+```
+
+To uninstall:
+
+```text
+/plugin uninstall claude-kimi@claude-kimi
+```
+
+### Local-development install
+
+If you've cloned this repo and want to run it from disk (e.g. while editing the plugin itself):
+
+```text
+/plugin marketplace add /absolute/path/to/claude-kimi
+/plugin install claude-kimi@claude-kimi
+/reload-plugins
+```
+
+The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing the marketplace at the local directory is enough.
 
 ## Usage
 
