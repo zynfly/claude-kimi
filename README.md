@@ -95,32 +95,6 @@ Within one Claude Code session, all `ask_kimi` calls for the same `work_dir` sha
 | `KIMI_RPC_INIT_TIMEOUT_MS` | `60000` | Idle timeout for the initial `initialize` handshake (ms) |
 | `KIMI_MAX_RESPONSE_BYTES` | `16384` | Hard ceiling for finished-turn response text (bytes) |
 | `KIMI_LOG_THINK` | — | Set to `1` to enable think-content logging |
-| `KIMI_PROGRESS_LOG` | — | Absolute file path. When set, every kimi step / tool call / status update is appended as one line. `tail -f` it in another terminal to watch progress live (see below). |
-
-### Watching kimi work in real time
-
-Claude Code's UI does not currently render MCP `notifications/progress` from plugin servers ([anthropics/claude-code#4157](https://github.com/anthropics/claude-code/issues/4157), closed "not planned"), so the collapsed "Calling plugin:claude-kimi:kimicode…" line stays put even when kimi is hard at work. To see what's happening:
-
-```bash
-# In one terminal, before starting Claude Code (or in shell rc):
-export KIMI_PROGRESS_LOG=/tmp/kimi-progress.log
-
-# In another terminal:
-tail -f /tmp/kimi-progress.log
-```
-
-You'll see lines like:
-
-```
-2026-05-07T02:51:13.412Z [/Users/you/repo] kimi: turn begin
-2026-05-07T02:51:13.580Z [/Users/you/repo] kimi: step 1
-2026-05-07T02:51:14.103Z [/Users/you/repo] kimi: tool read_file
-2026-05-07T02:51:14.291Z [/Users/you/repo] kimi: tool result
-2026-05-07T02:51:21.044Z [/Users/you/repo] kimi: ctx=12% out_tokens=842
-...
-```
-
-The same lines are also still emitted via MCP `notifications/progress` for any client that honors them.
 
 ## Development
 

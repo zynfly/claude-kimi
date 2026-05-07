@@ -11,23 +11,8 @@ import { KimiPool, truncateResponse } from './kimi-client.js';
 import { composePrompt } from './compose.js';
 import { resolveAndValidateDir } from './paths.js';
 
-import { appendFileSync } from 'node:fs';
-
 const pool = new KimiPool();
 const MAX_RESPONSE_BYTES = Math.max(1024, parseInt(process.env.KIMI_MAX_RESPONSE_BYTES || '16384', 10));
-
-// Optional file-based progress log. Claude Code 2.x ignores MCP notifications/progress
-// (anthropics/claude-code#4157, closed "not planned"), so we offer a tail-friendly
-// fallback: set KIMI_PROGRESS_LOG=/abs/path and `tail -f` it to watch kimi step-by-step.
-const PROGRESS_LOG = process.env.KIMI_PROGRESS_LOG || '';
-function writeProgressLog(line) {
-  if (!PROGRESS_LOG) return;
-  try {
-    appendFileSync(PROGRESS_LOG, `${new Date().toISOString()} ${line}\n`);
-  } catch {
-    // best-effort; never let progress logging break a turn.
-  }
-}
 
 const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -173,14 +158,9 @@ async function handleAsk(args, withImages, extra, progressToken) {
   const entry = pool.get({ workDir: workDirReal, maxSteps: args.max_steps, allowedDirs });
 
   let progressN = 0;
-  // Two delivery channels for each progress line:
-  //   1. MCP notifications/progress — currently ignored by Claude Code (issue #4157),
-  //      kept so this works correctly with any MCP client that does honor it.
-  //   2. Optional file log — KIMI_PROGRESS_LOG=/abs/path, then `tail -f` it.
-  const emitProgress = (message) => {
-    progressN += 1;
-    writeProgressLog(`[${workDirReal}] ${message}`);
+  const sendProgress = (message) => {
     if (progressToken == null || typeof extra?.sendNotification !== 'function') return;
+    progressN += 1;
     extra.sendNotification({
       method: 'notifications/progress',
       params: { progressToken, progress: progressN, message },
@@ -190,29 +170,29 @@ async function handleAsk(args, withImages, extra, progressToken) {
     if (msg.method !== 'event') return;
     const p = msg.params || {};
     switch (p.type) {
-      case 'TurnBegin': emitProgress('kimi: turn begin'); break;
-      case 'StepBegin': emitProgress(`kimi: step ${p.payload?.n ?? '?'}`); break;
+      case 'TurnBegin': sendProgress('kimi: turn begin'); break;
+      case 'StepBegin': sendProgress(`kimi: step ${p.payload?.n ?? '?'}`); break;
       case 'ToolCall': {
         const fn = p.payload?.function?.name || '?';
-        emitProgress(`kimi: tool ${fn}`);
+        sendProgress(`kimi: tool ${fn}`);
         break;
       }
       case 'ToolResult': {
         const err = p.payload?.return_value?.is_error ? ' (error)' : '';
-        emitProgress(`kimi: tool result${err}`);
+        sendProgress(`kimi: tool result${err}`);
         break;
       }
       case 'StatusUpdate': {
         const ctx = p.payload?.context_usage;
         const tu = p.payload?.token_usage;
         if (typeof ctx === 'number' && tu) {
-          emitProgress(`kimi: ctx=${(ctx * 100).toFixed(0)}% out_tokens=${tu.output ?? 0}`);
+          sendProgress(`kimi: ctx=${(ctx * 100).toFixed(0)}% out_tokens=${tu.output ?? 0}`);
         }
         break;
       }
-      case 'CompactionBegin': emitProgress('kimi: compaction begin'); break;
-      case 'CompactionEnd': emitProgress('kimi: compaction end'); break;
-      case 'TurnEnd': emitProgress('kimi: turn end'); break;
+      case 'CompactionBegin': sendProgress('kimi: compaction begin'); break;
+      case 'CompactionEnd': sendProgress('kimi: compaction end'); break;
+      case 'TurnEnd': sendProgress('kimi: turn end'); break;
     }
   };
 
