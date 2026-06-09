@@ -1,7 +1,7 @@
 {
   "name": "kimicode-mcp",
   "version": "0.4.1",
-  "description": "MCP bridge that lets Claude Code delegate tasks to the local kimicode CLI via its wire protocol.",
+  "description": "MCP bridge that lets Claude Code delegate tasks to the local kimicode CLI via the Agent Client Protocol (ACP).",
   "type": "module",
   "private": true,
   "bin": {
