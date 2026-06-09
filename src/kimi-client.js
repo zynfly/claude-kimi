@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import readline from 'node:readline';
 
-const PROTOCOL_VERSION = process.env.KIMI_PROTOCOL_VERSION || '1.9';
+// ACP (Agent Client Protocol) client for `kimi acp`.
+// kimi-code 0.12.0 dropped the legacy `--wire` private RPC; the only stdio
+// programmatic surface now is the standard ACP JSON-RPC server (`kimi acp`).
+const ACP_PROTOCOL_VERSION = parseInt(process.env.KIMI_ACP_PROTOCOL_VERSION || '1', 10);
 const KIMI_BIN = process.env.KIMI_BIN || 'kimi';
 const LOG_THINK = process.env.KIMI_LOG_THINK === '1';
 // Idle timeouts: reset on every incoming line from kimi (see _onLine).
-// A long-running `prompt` will only fire RPC_TIMEOUT_MS if kimi goes truly silent
-// — not because the wall-clock total exceeds the cap.
+// A long-running `session/prompt` will only fire RPC_TIMEOUT_MS if kimi goes
+// truly silent — not because the wall-clock total exceeds the cap.
 const RPC_TIMEOUT_MS = Math.max(1000, parseInt(process.env.KIMI_RPC_TIMEOUT_MS || '600000', 10));
 const RPC_FAST_TIMEOUT_MS = Math.max(1000, parseInt(process.env.KIMI_RPC_FAST_TIMEOUT_MS || '30000', 10));
 const RPC_INIT_TIMEOUT_MS = Math.max(5000, parseInt(process.env.KIMI_RPC_INIT_TIMEOUT_MS || '60000', 10));
@@ -20,11 +22,42 @@ export function truncateResponse(text, cap) {
   return { text: text.slice(0, cap) + '\n\n' + marker, truncated: true }
 }
 
+// Convert the MCP-side userInput (a plain string, or an array of
+// {type:'text'} / {type:'image_url'} parts) into ACP prompt content blocks.
+// ACP image blocks carry base64 `data` + `mimeType`; http(s) URLs can't be
+// inlined that way, so they degrade to a text reference.
+function toAcpPrompt(userInput) {
+  if (typeof userInput === 'string') {
+    return [{ type: 'text', text: userInput }];
+  }
+  if (!Array.isArray(userInput)) {
+    return [{ type: 'text', text: String(userInput ?? '') }];
+  }
+  const blocks = [];
+  for (const part of userInput) {
+    if (!part || typeof part !== 'object') continue;
+    if (part.type === 'text' && typeof part.text === 'string') {
+      blocks.push({ type: 'text', text: part.text });
+    } else if (part.type === 'image_url') {
+      const url = part.image_url?.url || '';
+      const m = /^data:([^;,]+);base64,(.*)$/s.exec(url);
+      if (m) {
+        blocks.push({ type: 'image', mimeType: m[1], data: m[2] });
+      } else if (url) {
+        // Remote/file URL — ACP image blocks need inline base64, so reference it.
+        blocks.push({ type: 'text', text: `[image: ${url}]` });
+      }
+    }
+  }
+  return blocks.length ? blocks : [{ type: 'text', text: '' }];
+}
+
 export class KimiClient {
   constructor({ args, cwd } = {}) {
     this.args = args || [];
     this.cwd = cwd;
     this.proc = null;
+    this.sessionId = null;
     this.pending = new Map();
     this.eventListeners = new Set();
     this.startPromise = null;
@@ -54,7 +87,9 @@ export class KimiClient {
 
   async _start() {
     if (this._skipInitialize) {
-      return { protocol_version: 'fake' };
+      // Tests drive a fake transport; give them a session id to prompt against.
+      this.sessionId = this.sessionId || 'fake-session';
+      return { protocolVersion: 'fake' };
     }
     log(`spawn: ${KIMI_BIN} ${this.args.join(' ')} (cwd=${this.cwd || '.'})`);
     this.proc = spawn(KIMI_BIN, this.args, {
@@ -66,7 +101,7 @@ export class KimiClient {
     this.proc.stderr.on('data', (b) => log(`stderr: ${b.toString().trimEnd()}`));
     this.proc.on('exit', (code, signal) => {
       this.dead = true;
-      const err = new Error(`kimi --wire exited (code=${code} signal=${signal})`);
+      const err = new Error(`kimi acp exited (code=${code} signal=${signal})`);
       for (const { reject } of this.pending.values()) reject(err);
       this.pending.clear();
       this.proc = null;
@@ -75,12 +110,31 @@ export class KimiClient {
     const rl = readline.createInterface({ input: this.proc.stdout });
     rl.on('line', (line) => this._onLine(line));
 
-    const result = await this._call('initialize', {
-      protocol_version: PROTOCOL_VERSION,
-      client: { name: 'kimicode-mcp', version: '0.2.0' },
+    const init = await this._call('initialize', {
+      protocolVersion: ACP_PROTOCOL_VERSION,
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
     }, { timeoutMs: RPC_INIT_TIMEOUT_MS });
-    log(`initialized server=${result?.server?.name}/${result?.server?.version} protocol=${result?.protocol_version}`);
-    return result;
+    log(`initialized agent=${init?.agentInfo?.name}/${init?.agentInfo?.version} protocol=${init?.protocolVersion}`);
+
+    const ns = await this._call('session/new', {
+      cwd: this.cwd || process.cwd(),
+      mcpServers: [],
+    }, { timeoutMs: RPC_INIT_TIMEOUT_MS });
+    this.sessionId = ns?.sessionId;
+    if (!this.sessionId) {
+      this.shutdown();
+      throw new Error('session/new returned no sessionId');
+    }
+    log(`session=${this.sessionId}`);
+
+    // Default to YOLO: auto-approve everything (matches the old `--yolo` flag),
+    // so no reverse session/request_permission round-trips block a turn.
+    try {
+      await this._setMode('yolo');
+    } catch (e) {
+      log(`could not set default mode=yolo: ${e.message}`);
+    }
+    return init;
   }
 
   _onLine(line) {
@@ -89,12 +143,12 @@ export class KimiClient {
     let msg;
     try { msg = JSON.parse(t); } catch { return; }
 
-    // Any line from kimi means it's alive — refresh idle timers for all in-flight calls.
-    // Without this, a long-running `prompt` that's actively streaming events would
-    // still hit the wall-clock timeout and get killed mid-task.
+    // Any line from kimi means it's alive — refresh idle timers for all in-flight
+    // calls. Without this, a long-running `session/prompt` that's actively
+    // streaming updates would still hit the idle timeout and get killed mid-task.
     for (const p of this.pending.values()) p.refresh?.();
 
-    const isResponse = msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined);
+    const isResponse = msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined) && !msg.method;
     const isRequest = msg.id !== undefined && msg.method && !isResponse;
     const isNotification = msg.id === undefined && msg.method;
 
@@ -108,12 +162,7 @@ export class KimiClient {
     }
 
     if (isRequest) {
-      log(`reverse request rejected: ${msg.method}`);
-      this._send({
-        jsonrpc: '2.0',
-        id: msg.id,
-        error: { code: -32601, message: `client (${msg.method}) not implemented` },
-      });
+      this._handleReverseRequest(msg);
       return;
     }
 
@@ -124,18 +173,42 @@ export class KimiClient {
     }
   }
 
+  // The agent can call back into the client. Under YOLO we shouldn't see
+  // permission prompts, and we declared no fs capability so kimi does its own
+  // file I/O — but answer defensively so a stray reverse request never deadlocks
+  // an in-flight turn.
+  _handleReverseRequest(msg) {
+    const { id, method, params } = msg;
+    if (method === 'session/request_permission') {
+      const opts = params?.options || [];
+      const allow = opts.find((o) => /allow/i.test(o.kind || o.optionId || '')) || opts[0];
+      if (allow) {
+        this._send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'selected', optionId: allow.optionId } } });
+      } else {
+        this._send({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
+      }
+      return;
+    }
+    log(`reverse request rejected: ${method}`);
+    this._send({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32601, message: `client (${method}) not implemented` },
+    });
+  }
+
   _send(obj) {
     if (!this.proc) throw new Error('kimi process not started');
     this.proc.stdin.write(JSON.stringify(obj) + '\n');
   }
 
   _call(method, params, { timeoutMs } = {}) {
-    const id = randomUUID();
-    const cap = timeoutMs ?? (method === 'prompt' ? RPC_TIMEOUT_MS : RPC_FAST_TIMEOUT_MS);
+    const id = this._nextId = (this._nextId || 0) + 1;
+    const cap = timeoutMs ?? (method === 'session/prompt' ? RPC_TIMEOUT_MS : RPC_FAST_TIMEOUT_MS);
     return new Promise((resolve, reject) => {
       // Idle timer: fires only when kimi has been silent for `cap` ms.
       // _onLine() refreshes this timer on every incoming line, so a long-running
-      // `prompt` that's actively streaming will not be killed mid-task.
+      // `session/prompt` that's actively streaming will not be killed mid-task.
       const timer = setTimeout(() => {
         this.pending.delete(id);
         log(`rpc idle timeout (${method}, no activity for ${cap}ms) — killing bucket`);
@@ -159,8 +232,16 @@ export class KimiClient {
     });
   }
 
+  _setMode(mode) {
+    return this._call('session/set_config_option', {
+      sessionId: this.sessionId,
+      configId: 'mode',
+      value: mode,
+    });
+  }
+
   async setPlanMode(enabled) {
-    return this._call('set_plan_mode', { enabled: !!enabled });
+    return this._setMode(enabled ? 'plan' : 'yolo');
   }
 
   runTurn({ userInput, planMode = false, onEvent } = {}) {
@@ -170,7 +251,7 @@ export class KimiClient {
       try {
         if (planMode) {
           try {
-            await this.setPlanMode(true);
+            await this._setMode('plan');
             enabledHere = true;
           } catch (e) {
             this.shutdown();
@@ -178,39 +259,41 @@ export class KimiClient {
           }
         }
         const chunks = [];
-        let lastStatus = null;
         const listener = (msg) => {
-          if (msg.method !== 'event') return;
-          const p = msg.params || {};
-          if (p.type === 'ContentPart') {
-            const payload = p.payload || {};
-            if (payload.type === 'text' && typeof payload.text === 'string') {
-              chunks.push(payload.text);
-            } else if (payload.type === 'think' && LOG_THINK && typeof payload.think === 'string') {
-              log(`think: ${payload.think.slice(0, 120).replace(/\n/g, ' ')}…`);
+          if (msg.method !== 'session/update') return;
+          const u = msg.params?.update || {};
+          if (u.sessionUpdate === 'agent_message_chunk') {
+            const text = u.content?.text;
+            if (typeof text === 'string') chunks.push(text);
+          } else if (u.sessionUpdate === 'agent_thought_chunk') {
+            const text = u.content?.text;
+            if (LOG_THINK && typeof text === 'string') {
+              log(`think: ${text.slice(0, 120).replace(/\n/g, ' ')}…`);
             }
-          } else if (p.type === 'StatusUpdate') {
-            lastStatus = p.payload || null;
           }
           onEvent?.(msg);
         };
         this.eventListeners.add(listener);
         let result;
         try {
-          result = await this._call('prompt', { user_input: userInput });
+          result = await this._call('session/prompt', {
+            sessionId: this.sessionId,
+            prompt: toAcpPrompt(userInput),
+          });
         } finally {
           this.eventListeners.delete(listener);
         }
+        const stopReason = result?.stopReason ?? 'unknown';
         return {
-          status: result?.status ?? 'unknown',
-          steps: result?.steps,
+          status: stopReason === 'end_turn' ? 'finished' : stopReason,
+          steps: undefined,
           text: chunks.join(''),
-          status_update: lastStatus,
+          status_update: null,
         };
       } finally {
         if (enabledHere) {
           try {
-            await this.setPlanMode(false);
+            await this._setMode('yolo');
           } catch (e) {
             log(`plan_mode reset failed; killing bucket: ${e.message}`);
             this.shutdown();
@@ -222,9 +305,11 @@ export class KimiClient {
     return this.turnQueue;
   }
 
-  async cancel() {
-    if (!this.proc || this.dead) return;
-    try { await this._call('cancel', {}, { timeoutMs: RPC_FAST_TIMEOUT_MS }); }
+  // ACP session/cancel is a notification: the agent interrupts the running
+  // turn and the in-flight session/prompt resolves with stopReason='cancelled'.
+  cancel() {
+    if (!this.proc || this.dead || !this.sessionId) return;
+    try { this._send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.sessionId } }); }
     catch (e) { log(`cancel: ${e.message}`); }
   }
 
@@ -245,13 +330,12 @@ export class KimiPool {
     this.buckets = new Map();
   }
 
-  _buildArgs(workDir, maxSteps, allowedDirs = []) {
-    const args = ['--yolo'];
-    if (workDir) args.push('--work-dir', workDir);
-    for (const d of allowedDirs) args.push('--add-dir', d);
-    if (maxSteps) args.push('--max-steps-per-turn', String(maxSteps));
-    args.push('--wire');
-    return args;
+  // `kimi acp` takes no work-dir / add-dir / max-steps flags — those are passed
+  // through ACP instead (work_dir via session/new `cwd`). allowedDirs and
+  // maxSteps have no ACP equivalent yet, so they only key the bucket; YOLO mode
+  // covers the write-scope that --add-dir used to broaden.
+  _buildArgs() {
+    return ['acp'];
   }
 
   get({ workDir, maxSteps, allowedDirs = [] } = {}) {
@@ -264,7 +348,7 @@ export class KimiPool {
     if (!entry) {
       const sortedAllowed = [...allowedDirs].sort();
       const client = new KimiClient({
-        args: this._buildArgs(workDir, maxSteps, sortedAllowed),
+        args: this._buildArgs(),
         cwd: workDir,
       });
       entry = { client, allowedDirs: sortedAllowed, maxSteps: maxSteps ?? null };

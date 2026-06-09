@@ -2,7 +2,7 @@
 
 ## Overview
 
-A Claude Code plugin that delegates tasks to the local **kimi** CLI agent via its wire protocol (JSON-RPC 2.0 over stdio). It exposes an MCP server, a slash command, and a skill so you can hand off work from Claude Code to kimicode.
+A Claude Code plugin that delegates tasks to the local **kimi** CLI agent via its ACP (Agent Client Protocol) (JSON-RPC 2.0 over stdio). It exposes an MCP server, a slash command, and a skill so you can hand off work from Claude Code to kimicode.
 
 ## Prerequisites
 
@@ -73,7 +73,7 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 - **`cancel_kimi`** — Cancel the in-flight kimicode turn (kimi process stays alive, session intact).  
   Optional: `work_dir` (string). If omitted, cancels every active kimicode session.
 
-- **`reset_kimi`** — Kill the kimicode process(es) and wipe wire-protocol session memory. Use when switching to an unrelated task.  
+- **`reset_kimi`** — Kill the kimicode process(es) and wipe ACP session memory. Use when switching to an unrelated task.  
   Optional: `work_dir` (string). If omitted, resets every active session.
 
 - **`compact_kimi`** — Have kimi summarize the current session (under 300 words), return the summary, then kill the process. Use when switching to a related-but-different task and you want to preserve the gist; pass the returned summary into the next `ask_kimi` as part of `goal` or `constraints`.  
@@ -81,7 +81,7 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 
 ### Session model
 
-Within one Claude Code session, all `ask_kimi` calls for the same `work_dir` share **the same long-lived `kimi --wire` process**, so kimi keeps wire-protocol session memory between turns — no need for Claude to re-explain context. Different `work_dir`s get separate processes (so projects don't bleed into each other), and different Claude Code sessions get separate MCP servers (so they don't see each other's pool). When you want to drop the session memory, call `reset_kimi`; when you want a clean slate but keep a summary, call `compact_kimi`.
+Within one Claude Code session, all `ask_kimi` calls for the same `work_dir` share **the same long-lived `kimi acp` process**, so kimi keeps ACP session memory between turns — no need for Claude to re-explain context. Different `work_dir`s get separate processes (so projects don't bleed into each other), and different Claude Code sessions get separate MCP servers (so they don't see each other's pool). When you want to drop the session memory, call `reset_kimi`; when you want a clean slate but keep a summary, call `compact_kimi`.
 
 ## Environment variables
 

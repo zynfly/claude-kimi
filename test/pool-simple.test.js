@@ -74,19 +74,10 @@ test('reset({workDir}) returns 0 when bucket does not exist', () => {
   p.shutdownAll();
 });
 
-test('_buildArgs: --add-dir per allowed_dir, --max-steps-per-turn when given', () => {
+test('_buildArgs: always the acp subcommand (work_dir/add-dir/max-steps go via ACP)', () => {
   const p = new KimiPool();
-  const args = p._buildArgs('/wd', 12, ['/a', '/b']);
-  assert.deepEqual(
-    args,
-    ['--yolo', '--work-dir', '/wd', '--add-dir', '/a', '--add-dir', '/b', '--max-steps-per-turn', '12', '--wire']
-  );
-  p.shutdownAll();
-});
-
-test('_buildArgs: minimal (no allowed_dirs, no maxSteps)', () => {
-  const p = new KimiPool();
-  const args = p._buildArgs('/wd');
-  assert.deepEqual(args, ['--yolo', '--work-dir', '/wd', '--wire']);
+  assert.deepEqual(p._buildArgs(), ['acp']);
+  // Old positional args are ignored now — kimi acp takes none of them.
+  assert.deepEqual(p._buildArgs('/wd', 12, ['/a', '/b']), ['acp']);
   p.shutdownAll();
 });

@@ -63,16 +63,16 @@ const STRUCTURED_PROPS = {
     type: 'string',
     description: 'Concise output spec ("unified diff", "JSON list of {field,value}", "<300-word summary"). Vague output → kimi may quote large excerpts back, costing Claude tokens.',
   },
-  allowed_dirs: { type: 'array', items: { type: 'string' }, description: 'Additional absolute directories kimi may write to (--add-dir). Default: only work_dir is writable.' },
-  plan_mode: { type: 'boolean', description: 'When true, kimi runs in plan-only mode: research, no writes.' },
-  max_steps: { type: 'integer', minimum: 1, description: 'Max agent steps in one turn.' },
+  allowed_dirs: { type: 'array', items: { type: 'string' }, description: 'Additional absolute directories kimi may write to. Note: kimi acp has no per-call add-dir; under YOLO mode kimi can already write outside work_dir, so this is advisory only.' },
+  plan_mode: { type: 'boolean', description: 'When true, kimi runs in plan-only mode: research, no writes (ACP mode=plan).' },
+  max_steps: { type: 'integer', minimum: 1, description: 'Max agent steps in one turn. Note: kimi acp does not expose a per-turn step cap, so this is currently ignored.' },
 };
 
 const TOOLS = [
   {
     name: 'ask_kimi',
     description:
-      'Delegate a self-contained task to the local kimicode CLI agent (kimi --wire). Pass structured fields; the MCP server inlines external file contents into kimi\'s prompt server-side, so Claude never pays content tokens — Claude pays only for the paths it sends and the response it gets back. ALWAYS use absolute paths for *_files. Files inside work_dir are rejected (kimi can read them itself). Set plan_mode=true for research-only tasks; allowed_dirs to broaden write scope.',
+      'Delegate a self-contained task to the local kimicode CLI agent (kimi acp). Pass structured fields; the MCP server inlines external file contents into kimi\'s prompt server-side, so Claude never pays content tokens — Claude pays only for the paths it sends and the response it gets back. ALWAYS use absolute paths for *_files. Files inside work_dir are rejected (kimi can read them itself). Set plan_mode=true for research-only tasks. Note: kimi runs in YOLO (auto-approve) mode and may write anywhere it can reach.',
     inputSchema: {
       type: 'object',
       properties: STRUCTURED_PROPS,
@@ -107,7 +107,7 @@ const TOOLS = [
   {
     name: 'reset_kimi',
     description:
-      'Kill the kimi process(es), wiping wire-protocol session memory. Use when switching to an unrelated task in the same work_dir, or when you suspect kimi has accumulated stale context. The next ask_kimi for that work_dir will spawn fresh.',
+      'Kill the kimi process(es), wiping ACP session memory. Use when switching to an unrelated task in the same work_dir, or when you suspect kimi has accumulated stale context. The next ask_kimi for that work_dir will spawn fresh.',
     inputSchema: {
       type: 'object',
       properties: { work_dir: { type: 'string' } },
@@ -167,32 +167,19 @@ async function handleAsk(args, withImages, extra, progressToken) {
     }).catch(() => {});
   };
   const onEvent = (msg) => {
-    if (msg.method !== 'event') return;
-    const p = msg.params || {};
-    switch (p.type) {
-      case 'TurnBegin': sendProgress('kimi: turn begin'); break;
-      case 'StepBegin': sendProgress(`kimi: step ${p.payload?.n ?? '?'}`); break;
-      case 'ToolCall': {
-        const fn = p.payload?.function?.name || '?';
-        sendProgress(`kimi: tool ${fn}`);
+    if (msg.method !== 'session/update') return;
+    const u = msg.params?.update || {};
+    switch (u.sessionUpdate) {
+      case 'tool_call': {
+        const what = u.title || u.kind || u.toolCallId || '?';
+        sendProgress(`kimi: tool ${what}`);
         break;
       }
-      case 'ToolResult': {
-        const err = p.payload?.return_value?.is_error ? ' (error)' : '';
-        sendProgress(`kimi: tool result${err}`);
+      case 'tool_call_update': {
+        if (u.status && u.status !== 'pending') sendProgress(`kimi: tool ${u.status}`);
         break;
       }
-      case 'StatusUpdate': {
-        const ctx = p.payload?.context_usage;
-        const tu = p.payload?.token_usage;
-        if (typeof ctx === 'number' && tu) {
-          sendProgress(`kimi: ctx=${(ctx * 100).toFixed(0)}% out_tokens=${tu.output ?? 0}`);
-        }
-        break;
-      }
-      case 'CompactionBegin': sendProgress('kimi: compaction begin'); break;
-      case 'CompactionEnd': sendProgress('kimi: compaction end'); break;
-      case 'TurnEnd': sendProgress('kimi: turn end'); break;
+      case 'plan': sendProgress('kimi: planning'); break;
     }
   };
 
