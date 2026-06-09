@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync, statSync } from 'node:fs';
-import { extname, isAbsolute, resolve } from 'node:path';
+import { readFileSync, statSync, appendFileSync } from 'node:fs';
+import { extname, isAbsolute, resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -17,6 +18,29 @@ const PKG_VERSION = JSON.parse(
 
 const pool = new KimiPool();
 const MAX_RESPONSE_BYTES = Math.max(1024, parseInt(process.env.KIMI_MAX_RESPONSE_BYTES || '16384', 10));
+
+// Optional file-based progress log. Claude Code does not render MCP
+// notifications/progress from plugin servers (anthropics/claude-code#4157,
+// closed "not planned"), so a long ask_kimi turn leaves the UI frozen on
+// "Calling plugin…". This is an out-of-band fallback: every progress line the
+// server already derives from kimi's ACP session/update events is also appended
+// here, so you can `tail -f` it in another pane to watch kimi work live.
+//   KIMI_PROGRESS_LOG=/abs/path  → write to that file
+//   KIMI_PROGRESS_LOG=1          → auto path: $TMPDIR/kimicode-progress-<pid>.log
+const PROGRESS_LOG = (() => {
+  const v = process.env.KIMI_PROGRESS_LOG;
+  if (!v) return '';
+  if (v === '1' || v === 'true') return join(tmpdir(), `kimicode-progress-${process.pid}.log`);
+  return v;
+})();
+if (PROGRESS_LOG) {
+  process.stderr.write(`[kimicode-mcp] progress log: ${PROGRESS_LOG} (tail -f to watch kimi live)\n`);
+}
+function writeProgressLog(line) {
+  if (!PROGRESS_LOG) return;
+  // Best-effort: a logging failure must never break a turn.
+  try { appendFileSync(PROGRESS_LOG, `${new Date().toISOString()} ${line}\n`); } catch {}
+}
 
 const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -159,7 +183,16 @@ async function handleAsk(args, withImages, extra, progressToken) {
   const entry = pool.get({ workDir: workDirReal });
 
   let progressN = 0;
+  let lastProgress = null;
+  // Each progress line fans out to two channels: the MCP notifications/progress
+  // stream (honored by any client that supports it) and the optional file log
+  // (the tail -f fallback for Claude Code, which currently ignores the former).
+  // Consecutive duplicate messages are collapsed — a streaming tool emits many
+  // identical `tool in_progress` updates, which would otherwise spam the log.
   const sendProgress = (message) => {
+    if (message === lastProgress) return;
+    lastProgress = message;
+    writeProgressLog(`[${workDirReal}] ${message}`);
     if (progressToken == null || typeof extra?.sendNotification !== 'function') return;
     progressN += 1;
     extra.sendNotification({
@@ -184,6 +217,8 @@ async function handleAsk(args, withImages, extra, progressToken) {
     }
   };
 
+  sendProgress(`turn begin: ${(args.goal || '').slice(0, 80)}`);
+
   let result;
   if (extra?.signal) {
     const onAbort = () => { entry.client.cancel() };
@@ -206,6 +241,7 @@ async function handleAsk(args, withImages, extra, progressToken) {
   }
 
   pool.touch(entry);
+  sendProgress(`turn end: ${result.status}`);
 
   const meta = formatStatusUpdate(result.status_update);
   const rawText = result.text || '';

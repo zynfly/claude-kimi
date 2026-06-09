@@ -101,6 +101,32 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 | `KIMI_RPC_INIT_TIMEOUT_MS` | `60000` | Idle timeout for the initial `initialize` handshake (ms) |
 | `KIMI_MAX_RESPONSE_BYTES` | `16384` | Hard ceiling for finished-turn response text (bytes) |
 | `KIMI_LOG_THINK` | — | Set to `1` to enable think-content logging |
+| `KIMI_PROGRESS_LOG` | — | Live progress fallback. `=1` → auto path `$TMPDIR/kimicode-progress-<pid>.log`; or an absolute file path. `tail -f` it to watch kimi step-by-step (see below). |
+
+### Watching kimi work in real time
+
+`ask_kimi` is a single synchronous call, so while kimi crunches a long task Claude Code's UI just shows a frozen `Calling plugin:claude-kimi:kimicode…`. The server does emit MCP `notifications/progress`, but Claude Code currently drops progress from plugin servers ([anthropics/claude-code#4157](https://github.com/anthropics/claude-code/issues/4157), closed "not planned"), so those never surface.
+
+As an out-of-band fallback, point `KIMI_PROGRESS_LOG` at a file and `tail -f` it in another pane:
+
+```bash
+export KIMI_PROGRESS_LOG=1          # auto path, printed to the server's stderr on startup
+# …or an explicit path:
+export KIMI_PROGRESS_LOG=/tmp/kimi-progress.log
+
+tail -f /tmp/kimi-progress.log
+```
+
+Each turn appends timestamped lines derived from kimi's ACP `session/update` events — the work_dir, turn begin/end, every tool call and its completion, and plan updates:
+
+```
+2026-06-09T09:05:01.471Z [/Users/you/repo] turn begin: Audit all callsites of legacyParse()
+2026-06-09T09:05:06.523Z [/Users/you/repo] kimi: tool Bash
+2026-06-09T09:05:06.718Z [/Users/you/repo] kimi: tool completed
+2026-06-09T09:05:09.031Z [/Users/you/repo] turn end: finished
+```
+
+Writes are best-effort (a logging failure never breaks a turn) and consecutive duplicate lines are collapsed. Leave the variable unset to disable the file entirely.
 
 ## Development
 
