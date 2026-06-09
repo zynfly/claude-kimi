@@ -6,6 +6,24 @@ description: Use this skill when Claude is preparing to call any ask_kimi* tool 
 
 Kimi runs in a separate process and sees nothing of Claude's conversation. The MCP server inlines the contents of `*_files` paths server-side, so Claude only pays tokens for the paths it sends and the response kimi returns. To keep the discipline tight, follow this checklist when composing an `ask_kimi` call.
 
+## When to delegate (and when not to)
+
+The win is **token economy**: kimi reads/writes large amounts of code in its own process, and Claude pays only for the paths sent plus the bounded response. So delegate work whose *inputs or intermediate steps* are large but whose *useful result* is small.
+
+**Good fits — delegate these:**
+- Codebase-wide audits / searches ("find every callsite of X", "where is Y configured") where the answer is a short list but the search would flood Claude's context.
+- Mechanical multi-file refactors (rename, signature change, codemod) that produce a diff Claude just needs to review.
+- Long, self-contained build/test/fix loops kimi can grind on independently.
+- Reading & summarizing large files or generated output Claude doesn't need verbatim.
+
+**Poor fits — do it in Claude instead:**
+- Tasks needing back-and-forth clarification with the user — kimi can't see the conversation and won't ask.
+- Work that depends on context already live in Claude's session (prior decisions, half-built state) — kimi starts blind every spawn.
+- Small edits (a few lines in a known file) — the delegation overhead and round-trip cost more than just doing it.
+- Anything where Claude must reason over the *full* output token-by-token — you'd pay for it on the way back anyway.
+
+When unsure: if the task's result fits in a tight `expected_output` spec but getting there is bulky, delegate; otherwise keep it.
+
 ## Required fields
 
 - `goal` — one sentence. Detail goes in `constraints` / `expected_output`, not in `goal`.
