@@ -7,11 +7,10 @@
 // Usage:
 //   node scripts/run.mjs --goal "..." [--work-dir DIR] \
 //     [--spec FILE] [--plan FILE] [--memory FILE] [--context FILE] \
-//     [--constraint TEXT] [--expected TEXT] \
-//     [--allowed-dir DIR] [--plan-mode] [--max-steps N]
+//     [--constraint TEXT] [--expected TEXT] [--plan-mode]
 //
-// Multi-value flags (--spec, --plan, --memory, --context, --constraint,
-// --allowed-dir) may be repeated. work_dir defaults to the current directory.
+// Multi-value flags (--spec, --plan, --memory, --context, --constraint)
+// may be repeated. work_dir defaults to the current directory.
 
 import { resolve } from 'node:path';
 import { KimiPool } from '../src/kimi-client.js';
@@ -27,9 +26,7 @@ function parseArgs(argv) {
     context_files: [],
     constraints: [],
     expected_output: null,
-    allowed_dirs: [],
     plan_mode: false,
-    max_steps: null,
   };
   const repeatable = {
     '--spec': 'spec_files',
@@ -37,7 +34,6 @@ function parseArgs(argv) {
     '--memory': 'memory_files',
     '--context': 'context_files',
     '--constraint': 'constraints',
-    '--allowed-dir': 'allowed_dirs',
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -50,7 +46,6 @@ function parseArgs(argv) {
     else if (a === '--work-dir') out.work_dir = resolve(next());
     else if (a === '--expected') out.expected_output = next();
     else if (a === '--plan-mode') out.plan_mode = true;
-    else if (a === '--max-steps') out.max_steps = parseInt(next(), 10);
     else if (a === '--help' || a === '-h') {
       process.stdout.write(usage()); process.exit(0);
     } else if (repeatable[a]) {
@@ -60,7 +55,7 @@ function parseArgs(argv) {
     }
   }
   if (!out.goal) throw new Error('--goal is required');
-  for (const k of ['spec_files', 'plan_files', 'memory_files', 'context_files', 'allowed_dirs']) {
+  for (const k of ['spec_files', 'plan_files', 'memory_files', 'context_files']) {
     out[k] = out[k].map((p) => resolve(p));
   }
   return out;
@@ -78,9 +73,7 @@ function usage() {
     '  --context FILE          repeatable, abs path to other reference file',
     '  --constraint TEXT       repeatable, a constraint bullet',
     '  --expected TEXT         expected_output spec (bound the response)',
-    '  --allowed-dir DIR       repeatable, additional writable dir',
     '  --plan-mode             research-only, no writes',
-    '  --max-steps N           cap kimi agent steps in this turn',
     '',
   ].join('\n');
 }
@@ -96,8 +89,6 @@ async function main() {
 
   const entry = pool.get({
     workDir: args.work_dir,
-    maxSteps: args.max_steps || undefined,
-    allowedDirs: args.allowed_dirs,
   });
 
   const startedAt = Date.now();

@@ -63,9 +63,7 @@ const STRUCTURED_PROPS = {
     type: 'string',
     description: 'Concise output spec ("unified diff", "JSON list of {field,value}", "<300-word summary"). Vague output → kimi may quote large excerpts back, costing Claude tokens.',
   },
-  allowed_dirs: { type: 'array', items: { type: 'string' }, description: 'Additional absolute directories kimi may write to. Note: kimi acp has no per-call add-dir; under YOLO mode kimi can already write outside work_dir, so this is advisory only.' },
   plan_mode: { type: 'boolean', description: 'When true, kimi runs in plan-only mode: research, no writes (ACP mode=plan).' },
-  max_steps: { type: 'integer', minimum: 1, description: 'Max agent steps in one turn. Note: kimi acp does not expose a per-turn step cap, so this is currently ignored.' },
 };
 
 const TOOLS = [
@@ -152,10 +150,9 @@ async function handleAsk(args, withImages, extra, progressToken) {
     userInput = composed;
   }
 
-  const allowedDirs = (args.allowed_dirs || []).map((d) => resolveAndValidateDir(d).realpath);
   const workDirReal = resolveAndValidateDir(args.work_dir).realpath;
 
-  const entry = pool.get({ workDir: workDirReal, maxSteps: args.max_steps, allowedDirs });
+  const entry = pool.get({ workDir: workDirReal });
 
   let progressN = 0;
   const sendProgress = (message) => {

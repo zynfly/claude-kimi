@@ -50,12 +50,6 @@ test('multiple roles render in order: spec, plan, memory, context', () => {
   assert.ok(specIdx > 0 && memIdx > specIdx, 'spec before memory');
 });
 
-test('allowed_dirs section appears when given', () => {
-  const out = composePrompt({ goal: 'g', work_dir: workDir, allowed_dirs: [tmp] });
-  assert.match(out, /# Additional writable directories/);
-  assert.ok(out.includes(`- ${tmp}`));
-});
-
 test('constraints and expected_output sections appear', () => {
   const out = composePrompt({
     goal: 'g',

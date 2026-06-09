@@ -34,14 +34,6 @@ export function composePrompt(args) {
   lines.push('# Goal', goal.trim(), '');
   lines.push('# Working directory (read/write)', work_dir, '');
 
-  const allowedDirs = args.allowed_dirs || [];
-  if (allowedDirs.length) {
-    for (const d of allowedDirs) resolveAndValidateDir(d);
-    lines.push('# Additional writable directories');
-    for (const d of allowedDirs) lines.push(`- ${d}`);
-    lines.push('');
-  }
-
   let total = 0;
   const FILE_CAP = maxFileBytes();
   const TOTAL_CAP = maxTotalBytes();

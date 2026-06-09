@@ -15,9 +15,6 @@ async function smoke() {
   const magic = `purple-elephant-${Date.now()}`;
   writeFileSync(memoryFile, `magic word: ${magic}\n`);
 
-  const allowedTmp = join(tmp, 'allowed');
-  mkdirSync(allowedTmp);
-
   console.error(`smoke: workDir=${workDir} magic=${magic}`);
 
   // §5 memory echo
@@ -47,22 +44,6 @@ async function smoke() {
   console.error(`test 6 [plan_mode] status=${r2.status} fileExists=${existsSync(targetFile)}`);
   if (r2.status !== 'finished' || existsSync(targetFile)) {
     console.error('FAIL: file was created in plan_mode (or turn errored)'); process.exit(1);
-  }
-
-  // §9 allowed_dirs write
-  const writeTarget = join(allowedTmp, 'kimi-wrote-this.txt');
-  if (existsSync(writeTarget)) rmSync(writeTarget);
-  const composed3 = composePrompt({
-    goal: `Create a file at ${writeTarget} containing exactly the text "ok" (no newline).`,
-    work_dir: workDir,
-    allowed_dirs: [allowedTmp],
-    expected_output: 'one sentence confirmation',
-  });
-  const e3 = pool.get({ workDir, allowedDirs: [allowedTmp] });
-  const r3 = await e3.client.runTurn({ userInput: composed3, planMode: false });
-  console.error(`test 9 [allowed_dirs] status=${r3.status} fileExists=${existsSync(writeTarget)}`);
-  if (r3.status !== 'finished' || !existsSync(writeTarget)) {
-    console.error('FAIL: kimi did not create file in allowed_dirs'); process.exit(1);
   }
 
   console.error('ALL SMOKE TESTS PASSED');

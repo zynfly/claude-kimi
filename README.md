@@ -62,7 +62,7 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 
 - **`ask_kimi`** — Delegate a self-contained text task to kimicode.  
   Required: `goal` (string), `work_dir` (string).  
-  Notable optional: `spec_files` (string[]), `plan_files` (string[]), `memory_files` (string[]), `context_files` (string[]), `constraints` (string[]), `expected_output` (string), `allowed_dirs` (string[]), `plan_mode` (boolean), `max_steps` (integer).  
+  Notable optional: `spec_files` (string[]), `plan_files` (string[]), `memory_files` (string[]), `context_files` (string[]), `constraints` (string[]), `expected_output` (string), `plan_mode` (boolean).  
   `*_files` must be absolute paths outside `work_dir`. `plan_mode=true` runs kimicode in read-only plan mode.
 
 - **`ask_kimi_with_images`** — Like `ask_kimi`, but attaches images for multimodal reasoning.  

@@ -13,9 +13,9 @@ function fakeClient() {
   };
 }
 
-function withFakeClient(pool, key, allowedDirs = [], maxSteps = null) {
+function withFakeClient(pool, key) {
   // Inject a fake bucket so we don't spawn real kimi.
-  const entry = { client: fakeClient(), allowedDirs, maxSteps };
+  const entry = { client: fakeClient() };
   pool.buckets.set(key, entry);
   return entry;
 }
@@ -74,10 +74,8 @@ test('reset({workDir}) returns 0 when bucket does not exist', () => {
   p.shutdownAll();
 });
 
-test('_buildArgs: always the acp subcommand (work_dir/add-dir/max-steps go via ACP)', () => {
+test('_buildArgs: always the acp subcommand', () => {
   const p = new KimiPool();
   assert.deepEqual(p._buildArgs(), ['acp']);
-  // Old positional args are ignored now — kimi acp takes none of them.
-  assert.deepEqual(p._buildArgs('/wd', 12, ['/a', '/b']), ['acp']);
   p.shutdownAll();
 });

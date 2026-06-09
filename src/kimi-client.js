@@ -330,15 +330,14 @@ export class KimiPool {
     this.buckets = new Map();
   }
 
-  // `kimi acp` takes no work-dir / add-dir / max-steps flags — those are passed
-  // through ACP instead (work_dir via session/new `cwd`). allowedDirs and
-  // maxSteps have no ACP equivalent yet, so they only key the bucket; YOLO mode
-  // covers the write-scope that --add-dir used to broaden.
+  // `kimi acp` takes no work-dir / add-dir / max-steps flags — work_dir is
+  // passed via session/new `cwd`. There is no ACP equivalent for allowedDirs or
+  // maxSteps, so the pool keys only on workDir.
   _buildArgs() {
     return ['acp'];
   }
 
-  get({ workDir, maxSteps, allowedDirs = [] } = {}) {
+  get({ workDir } = {}) {
     const key = workDir || '';
     let entry = this.buckets.get(key);
     if (entry && entry.client.dead) {
@@ -346,12 +345,11 @@ export class KimiPool {
       entry = null;
     }
     if (!entry) {
-      const sortedAllowed = [...allowedDirs].sort();
       const client = new KimiClient({
         args: this._buildArgs(),
         cwd: workDir,
       });
-      entry = { client, allowedDirs: sortedAllowed, maxSteps: maxSteps ?? null };
+      entry = { client };
       this.buckets.set(key, entry);
       log(`pool: spawned new kimi for ${key || '<no work_dir>'}`);
     }

@@ -37,12 +37,10 @@ Rules:
 ## Permission flags
 
 - `plan_mode: true` for research-only tasks (audit, analyze, "should we…"). Kimi will not write files.
-- `allowed_dirs` (absolute) only when kimi must write outside the project. Prefer keeping it empty.
 
 ## After the call
 
 - Status `finished` → summarize 2–5 bullets, quote salient diffs/lists. Do **not** paste long output verbatim — that costs Claude tokens.
-- Status `max_steps_reached` → surface to the user, suggest narrowing scope. Do **not** auto-retry.
 - Status `cancelled` / error → surface to the user.
 
 ## Worked example

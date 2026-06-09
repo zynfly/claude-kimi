@@ -23,6 +23,6 @@ $ARGUMENTS
 ```
 
 After kimi returns:
-- If the response begins with `[kimi status=max_steps_reached ...]` or `[kimi status=cancelled ...]`, surface the status and suggest narrowing the prompt; do not auto-retry.
+- If the response begins with `[kimi status=cancelled ...]`, surface the status and suggest narrowing the prompt; do not auto-retry.
 - If kimi's reply is short (≲ 200 words) and contains no diffs, file lists, or structured output, **relay it verbatim** — do not "summarize" a one-paragraph answer into bullets, that throws away the actual content. A leading `[kimi ctx=...]` status line may be omitted or kept, your choice.
 - Otherwise (long output, or contains diffs / file lists / structured blocks), summarize what kimi did in 2–5 bullets and quote the diffs/lists verbatim inside fenced blocks. Do not paste long prose verbatim.
