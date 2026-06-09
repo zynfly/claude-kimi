@@ -79,9 +79,15 @@ The repo's `.claude-plugin/marketplace.json` already lists itself, so pointing t
 - **`compact_kimi`** — Have kimi summarize the current session (under 300 words), return the summary, then kill the process. Use when switching to a related-but-different task and you want to preserve the gist; pass the returned summary into the next `ask_kimi` as part of `goal` or `constraints`.  
   Required: `work_dir` (string).
 
-### Session model
+### How it works
 
-Within one Claude Code session, all `ask_kimi` calls for the same `work_dir` share **the same long-lived `kimi acp` process**, so kimi keeps ACP session memory between turns — no need for Claude to re-explain context. Different `work_dir`s get separate processes (so projects don't bleed into each other), and different Claude Code sessions get separate MCP servers (so they don't see each other's pool). When you want to drop the session memory, call `reset_kimi`; when you want a clean slate but keep a summary, call `compact_kimi`.
+- **Per-`work_dir` process pool.** All `ask_kimi` calls with the same `work_dir` share a single long-lived `kimi acp` process. ACP session memory (conversation state, tool results, file context) persists across turns, so you don't need to re-explain context. Different `work_dir`s get isolated processes, and each Claude Code session has its own pool. Call `reset_kimi` to wipe a session and start fresh, or `compact_kimi` to summarize the session before killing it so a fresh process can pick up the gist.
+
+- **Server-side file inlining.** The MCP server reads the contents of any `*_files` you pass and embeds them directly into the prompt sent to kimi. Claude pays tokens only for the file paths it sends plus the bounded response; the actual file contents never pass through Claude's context.
+
+- **Idle-aware RPC timeouts.** Timeouts are reset on every line received from kimi, not by wall-clock duration. A long-running prompt that keeps streaming events will never be killed mid-task; the timeout only fires after the configured idle period with zero activity.
+
+- **Response byte cap.** Finished turns are truncated to `KIMI_MAX_RESPONSE_BYTES` (default 16 KB) before returning to Claude, preventing a single turn from blowing out Claude's context window.
 
 ## Environment variables
 
