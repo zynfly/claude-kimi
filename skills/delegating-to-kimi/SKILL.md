@@ -1,5 +1,5 @@
 ---
-description: Use this skill when Claude is preparing to call any mcp__kimicode__ask_kimi* tool, or when the user explicitly says "delegate to kimi" / "have kimi do this", or when a coding task is heavy/long/codebase-wide and would consume large amounts of Claude Code context. The skill is a checklist that ensures kimi gets the absolute paths to spec/plan/memory it needs, and that the response stays bounded so Claude's tokens are protected.
+description: Use this skill when Claude is preparing to call any ask_kimi* tool (named mcp__plugin_claude-kimi_kimicode__ask_kimi when installed as a plugin, or mcp__kimicode__ask_kimi as a bare project MCP server), or when the user explicitly says "delegate to kimi" / "have kimi do this", or when a coding task is heavy/long/codebase-wide and would consume large amounts of Claude Code context. The skill is a checklist that ensures kimi gets the absolute paths to spec/plan/memory it needs, and that the response stays bounded so Claude's tokens are protected.
 ---
 
 # Delegating to kimi
@@ -37,6 +37,7 @@ Rules:
 ## Permission flags
 
 - `plan_mode: true` for research-only tasks (audit, analyze, "should we…"). Kimi will not write files.
+- ⚠️ When `plan_mode` is omitted/false, kimi runs in **YOLO (auto-approve)** mode — it writes files anywhere it can reach under `work_dir` without confirmation. Use `plan_mode: true` whenever you only want analysis.
 
 ## After the call
 

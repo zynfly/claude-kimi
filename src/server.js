@@ -11,6 +11,10 @@ import { KimiPool, truncateResponse } from './kimi-client.js';
 import { composePrompt } from './compose.js';
 import { resolveAndValidateDir } from './paths.js';
 
+const PKG_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
+
 const pool = new KimiPool();
 const MAX_RESPONSE_BYTES = Math.max(1024, parseInt(process.env.KIMI_MAX_RESPONSE_BYTES || '16384', 10));
 
@@ -126,7 +130,7 @@ const TOOLS = [
 ];
 
 const server = new Server(
-  { name: 'kimicode-mcp', version: '0.2.0' },
+  { name: 'kimicode-mcp', version: PKG_VERSION },
   { capabilities: { tools: {} } }
 );
 

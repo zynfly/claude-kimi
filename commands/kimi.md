@@ -14,7 +14,7 @@ Steps:
 3. If the user mentioned external files (memory, spec, plan, docs) by absolute path or by `~/...` path, expand them and put them in the matching field (`memory_files` / `spec_files` / `plan_files` / `context_files`). Never paste file contents into `goal`.
 4. If the task is research-only ("audit", "analyze", "should we…", "find places that…"), set `plan_mode: true`.
 5. Set `expected_output` to a specific bounded form ("unified diff", "JSON list of paths", "<300-word summary"). Avoid vague phrasing — kimi will respond verbosely otherwise.
-6. Call `mcp__kimicode__ask_kimi` with the composed object.
+6. Call the `ask_kimi` tool with the composed object. When installed as a plugin its name is `mcp__plugin_claude-kimi_kimicode__ask_kimi`; as a bare project MCP server it is `mcp__kimicode__ask_kimi`. Both are pre-authorized — use whichever the tool list exposes.
 
 User argument:
 
