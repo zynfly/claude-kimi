@@ -1,6 +1,6 @@
 {
   "name": "claude-kimi",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Delegate tasks from Claude Code to the local kimicode CLI agent via the Agent Client Protocol (ACP, JSON-RPC 2.0 over stdio). Adds an MCP server, a /kimi slash command, and a delegating-to-kimi skill.",
   "author": {
     "name": "zynfly",

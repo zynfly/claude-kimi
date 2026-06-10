@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import readline from 'node:readline';
 
 // ACP (Agent Client Protocol) client for `kimi acp`.
@@ -369,8 +370,17 @@ export class KimiPool {
     return ['acp'];
   }
 
+  // Buckets are keyed on the work_dir's realpath (ask_kimi resolves before
+  // get), but reset/cancel callers pass whatever path the user gave. Resolve
+  // symlinks here so e.g. /tmp/x finds the bucket stored as /private/tmp/x;
+  // fall back to the raw path so a since-deleted dir can still be reset.
+  _key(workDir) {
+    if (!workDir) return '';
+    try { return realpathSync.native(workDir); } catch { return workDir; }
+  }
+
   get({ workDir } = {}) {
-    const key = workDir || '';
+    const key = this._key(workDir);
     let entry = this.buckets.get(key);
     if (entry && entry.client.dead) {
       this.buckets.delete(key);
@@ -389,7 +399,7 @@ export class KimiPool {
   }
 
   peek(workDir) {
-    const key = workDir || '';
+    const key = this._key(workDir);
     const e = this.buckets.get(key);
     if (e?.client.dead) {
       this.buckets.delete(key);
@@ -403,15 +413,16 @@ export class KimiPool {
   }
 
   cancel({ workDir } = {}) {
+    const key = workDir == null ? null : this._key(workDir);
     const promises = [];
     for (const [k, e] of this.buckets) {
-      if (workDir == null || k === workDir) promises.push(e.client.cancel());
+      if (key == null || k === key) promises.push(e.client.cancel());
     }
     return Promise.all(promises);
   }
 
   reset({ workDir } = {}) {
-    const targets = workDir == null ? [...this.buckets.keys()] : [workDir];
+    const targets = workDir == null ? [...this.buckets.keys()] : [this._key(workDir)];
     let n = 0;
     for (const k of targets) {
       const e = this.buckets.get(k);
