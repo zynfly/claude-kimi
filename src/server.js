@@ -16,6 +16,18 @@ const PKG_VERSION = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version;
 
+// Last-resort safety net: an unexpected exception must fail the offending
+// turn, not kill the MCP server process — when this server dies, Claude Code
+// silently drops every kimi tool for the rest of the session ("the plugin
+// just exits"). Per-tool errors are already isolated by the CallTool handler;
+// this only catches bugs that escape it.
+process.on('uncaughtException', (e) => {
+  process.stderr.write(`[kimicode-mcp] uncaught exception (server kept alive): ${e?.stack || e}\n`);
+});
+process.on('unhandledRejection', (e) => {
+  process.stderr.write(`[kimicode-mcp] unhandled rejection (server kept alive): ${e?.stack || e}\n`);
+});
+
 const pool = new KimiPool();
 const MAX_RESPONSE_BYTES = Math.max(1024, parseInt(process.env.KIMI_MAX_RESPONSE_BYTES || '16384', 10));
 

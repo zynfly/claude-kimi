@@ -97,18 +97,7 @@ export class KimiClient {
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-
-    this.proc.stderr.on('data', (b) => log(`stderr: ${b.toString().trimEnd()}`));
-    this.proc.on('exit', (code, signal) => {
-      this.dead = true;
-      const err = new Error(`kimi acp exited (code=${code} signal=${signal})`);
-      for (const { reject } of this.pending.values()) reject(err);
-      this.pending.clear();
-      this.proc = null;
-    });
-
-    const rl = readline.createInterface({ input: this.proc.stdout });
-    rl.on('line', (line) => this._onLine(line));
+    this._wireProc(this.proc);
 
     const init = await this._call('initialize', {
       protocolVersion: ACP_PROTOCOL_VERSION,
@@ -135,6 +124,49 @@ export class KimiClient {
       log(`could not set default mode=yolo: ${e.message}`);
     }
     return init;
+  }
+
+  // Every child handler lives here so tests can wire a real process the same
+  // way _start() does. The 'error' listeners are load-bearing: without them a
+  // spawn failure (kimi not on PATH) or an EPIPE from a write racing kimi's
+  // death emits an unhandled 'error' event, which kills the whole MCP server —
+  // Claude Code then drops every kimi tool for the rest of the session.
+  _wireProc(proc) {
+    this.stderrTail = [];
+    proc.stderr.on('data', (b) => {
+      const s = b.toString().trimEnd();
+      for (const ln of s.split('\n')) {
+        this.stderrTail.push(ln);
+        if (this.stderrTail.length > 5) this.stderrTail.shift();
+      }
+      log(`stderr: ${s}`);
+    });
+    proc.stderr.on('error', (err) => log(`stderr stream: ${err.message}`));
+    proc.stdout.on('error', (err) => log(`stdout stream: ${err.message}`));
+    // EPIPE here means kimi died while a write was in flight; the 'exit'
+    // handler does the cleanup.
+    proc.stdin.on('error', (err) => log(`stdin stream: ${err.message}`));
+    proc.on('error', (err) => {
+      this.dead = true;
+      const hint = err.code === 'ENOENT'
+        ? ` — '${KIMI_BIN}' not found on PATH. Install kimi-code, or set KIMI_BIN to the absolute binary path.`
+        : '';
+      const e = new Error(`kimi failed to start: ${err.message}${hint}`);
+      log(e.message);
+      for (const { reject } of this.pending.values()) reject(e);
+      this.pending.clear();
+      this.proc = null;
+    });
+    proc.on('exit', (code, signal) => {
+      this.dead = true;
+      const tail = this.stderrTail.length ? `; last stderr: ${this.stderrTail.join(' | ')}` : '';
+      const err = new Error(`kimi acp exited (code=${code} signal=${signal})${tail}`);
+      for (const { reject } of this.pending.values()) reject(err);
+      this.pending.clear();
+      this.proc = null;
+    });
+    const rl = readline.createInterface({ input: proc.stdout });
+    rl.on('line', (line) => this._onLine(line));
   }
 
   _onLine(line) {
